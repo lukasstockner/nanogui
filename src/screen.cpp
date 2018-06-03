@@ -29,6 +29,11 @@
 #  define GLFW_EXPOSE_NATIVE_WGL
 #  define GLFW_EXPOSE_NATIVE_WIN32
 #  include <GLFW/glfw3native.h>
+#elif defined(__linux__)
+#  include <X11/Xresource.h>
+
+#  define GLFW_EXPOSE_NATIVE_X11
+#  include <GLFW/glfw3native.h>
 #endif
 
 /* Allow enforcing the GL2 implementation of NanoVG */
@@ -103,6 +108,30 @@ static float get_pixel_ratio(GLFWwindow *window) {
         if (fscanf(fp, "uint32 %i", &ratioInt) != 1)
             return 1;
         ratio = ratioInt;
+
+        if (ratioInt == 0) {
+            /* Zero means autodetection, so query the display DPI from X11. */
+            Display *x11_display = glfwGetX11Display();
+            char* xrm_resource = XResourceManagerString(x11_display);
+            if (!xrm_resource)
+                return 1;
+
+            XrmDatabase xrm_database = XrmGetStringDatabase(xrm_resource);
+            if (!xrm_database)
+                return 1;
+
+            char* xrm_type = NULL;
+            XrmValue xrm_value;
+
+            if (!XrmGetResource(xrm_database, "Xft.dpi", "Xft.Dpi",
+                                &xrm_type, &xrm_value))
+                return 1;
+
+            if (!xrm_type || strcmp(xrm_type, "String") != 0)
+                return 1;
+
+            ratio = atoi((char*) xrm_value.addr) / 96.0f;
+        }
     }
     if (pclose(fp) != 0)
         return 1;
